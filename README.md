@@ -11,6 +11,12 @@ An overly generic Makefile that is a program in it's own right.
 
 * Supports tuning configuration for each target/executable/source dir.
 
+* Now with 10% more bloat!
+
+* clang-tidy checks, and clang-format+astyle formatting!
+
+* Prints nice tree of config!
+
 See `config.mk` for options.
 
 Requires GNU Make, tested under v4.2.1.

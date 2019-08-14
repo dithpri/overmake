@@ -18,6 +18,27 @@ EXEC_MODULES//a := mod1
 EXEC_MODULES//b := mod2 cxx_mod
 EXEC_MODULES/release/a := mod1 debug
 
+# Directory to build in
+BUILD_DIR := build/
+# Binaries
+EXECS := a b
+# Available modules (subdirs in the root dir)
+MODULES := mod1 mod2 debug cxx_mod
+# Targets
+# Warning: reserved phony targets:
+#  all showconf print clean purge cleanobj cleanmod cleandep cleanbin tidy
+#  format style
+TARGETS := tdebug release
+# Additional include dirs
+INCLUDE_DIRS := -I./
+
+# see next section
+TARGET_EXECS := a b
+TARGET_EXECS/tdebug := a
+EXEC_MODULES//a := mod1
+EXEC_MODULES//b := mod2 cxx_mod
+EXEC_MODULES/release/a := mod1 debug
+
 
 # Per target/exec/module configuration vars
 #
@@ -62,7 +83,7 @@ EXEC_MODULES/release/a := mod1 debug
 # Default: $(EXECS)
 
 # EXEC_MODULES/t/e
-# Modules needed to build exec e for target t
+# Modules m needed to build exec e for target t
 # Default: $(MODULES)
 
 # INCLUDE_DIRS/t/e/m
@@ -87,9 +108,11 @@ EXEC_MODULES/release/a := mod1 debug
 
 # LINK/t/e
 # What program to use to generate executable
-# Default: $(CXX) $^ -o $@
+# Default: $(CXX)
+# called as $(LINK) $(LINKFLAGS_PRE) $^ $(LINKFLAGS_POST) -o $@
 
-# LINKFLAGS/t/e
+# LINKFLAGS_PRE/t/e
+# LINKFLAGS_POST/t/e
 # flags for $(LINK)
 # Default: none
 
@@ -106,10 +129,17 @@ EXEC_MODULES/release/a := mod1 debug
 # Additional
 
 # C_EXTENSIONS
-# Default: C_EXTENSIONS       := c
+# Default: := c
+# C_INC_EXTENSIONS
+# Default: := h
 
 # CXX_EXTENSIONS
-# Default: CXX_EXTENSIONS     := cpp
+# Default: cpp
+# CXX_INC_EXTENSIONS
+# Default: h hpp
+
+# CLANG-TIDYFLAGS
+# Default: -quiet
 
 # Check for trailing slashes in TARGETS, MODULES and EXECS?
 # (no checks could cause unknown behaviour)
