@@ -4,9 +4,10 @@ MAKEFLAGS += -r
 
 
 VARS_BASE/ := BUILD_DIR EXECS MODULES TARGETS INCLUDE_DIRS TARGET_EXECS\
-EXEC_MODULES INCLUDE_DIRS CC CXX CPP CFLAGS CXXFLAGS CPPFLAGS LINK LINKFLAGS\
-AR ARFLAGS C_EXTENSIONS CXX_EXTENSIONS OM_NOCHECK OM_NOECHO OM_COLORS\
-OM_DETAILED_PRINT 
+EXEC_MODULES INCLUDE_DIRS CC CXX CPP CFLAGS CXXFLAGS CPPFLAGS LINK\
+CLANG-TIDYFLAGS LINKFLAGS_PRE LINKFLAGS_POST AR ARFLAGS\
+C_EXTENSIONS C_INC_EXTENSIONS CXX_EXTENSIONS CXX_INC_EXTENSIONS\
+OM_NOCHECK OM_NOECHO OM_COLORS OM_DETAILED_PRINT 
 
 # helper func
 # 1: needle(s)
@@ -17,7 +18,9 @@ $(if $(strip $(foreach n,$1,\
 
 
 PHONY := $(PHONY)
-PHONY += all showconf
+PHONY += all showconf print
+PHONY += clean purge cleanobj cleanmod cleandep cleanbin
+
 ifeq ($(findstring showconf,$(MAKECMDGOALS)),showconf)
 print/ := Y
 $(foreach v,$(VARS_BASE/),$(info |$v : $($v)))
@@ -30,6 +33,18 @@ else
 print/ :=
 all: $(TARGETS)
 endif
+endif
+
+PHONY += tidy format style
+
+ifeq ($(call contains-any/2/,tidy,$(MAKECMDGOALS)),Y)
+tidy/ := Y
+endif
+ifeq ($(call contains-any/2/,format,$(MAKECMDGOALS)),Y)
+format/ := Y
+endif
+ifeq ($(call contains-any/2/,style,$(MAKECMDGOALS)),Y)
+style/ := Y
 endif
 
 include $(INC_DEPS)
@@ -56,10 +71,11 @@ EXEC_MODULES ?= $(MODULES)
 INCLUDE_DIRS ?= -I./
 
 # LINK/t/e
-LINK ?= $(CXX) $$$$^ -o $$$$@
+LINK ?= $(CXX)
 
 # LINKFLAGS/t/e
-LINKFLAGS ?=$(space/)
+LINKFLAGS_POST ?=$(space/)
+LINKFLAGS_PRE  ?=$(space/)
 
 ifeq ($(origin CC),default)
 CC := gcc
@@ -96,8 +112,12 @@ ARFLAGS := rcs
 endif
 ARFLAGS ?= rcs
 
+CLANG-TIDYFLAGS ?= -quiet
+
 C_EXTENSIONS       ?= c
 CXX_EXTENSIONS     ?= cpp
+C_INC_EXTENSIONS   ?= h
+CPP_INC_EXTENSIONS ?= hpp
 
 
 
@@ -114,6 +134,9 @@ echo_CC/    := @echo -e 'CC       $$@'
 echo_CXX/   := @echo -e 'CXX      $$@'
 echo_GENDEP := @echo -e 'GENDEP   $$@'
 echo_LINK/  := @echo -e 'LINK     $$@'
+echo_TIDY/   := @echo -e 'TIDY     $$<'
+echo_FRMT/   := @echo    'Formatting using clang-format'
+echo_STYLE/  := @echo    'Formatting using astyle'
 else
 print/tcol/ != echo -en '\e[1;31m'
 print/ecol/ != echo -en '\e[1;35m'
@@ -125,7 +148,11 @@ echo_CC/    := @echo -e 'CC       \e[1;36m$$@\e[0m'
 echo_CXX/   := @echo -e 'CXX      \e[1;36m$$@\e[0m'
 echo_GENDEP := @echo -e 'GENDEP   \e[0;33m$$@\e[0m'
 echo_LINK/  := @echo -e 'LINK     \e[1;35m$$@\e[0m'
+echo_TIDY/  := @echo -e 'TIDY     \e[1;34m$$<\e[0m'
+echo_FRMT/  := @echo -e '\e[1;37mFormatting using clang-format\e[1;30m'
+echo_STYLE/ := @echo -e '\e[1;37mFormatting using astyle\e[1;30m'
 endif
+
 
 ifneq ($(OM_DETAILED_PRINT),)
 echo_AR/    += '     ($$^)'
@@ -253,14 +280,15 @@ $(if $(print/),$(info $(space/)     Exec\
   $(foreach v,$(VARS_BASE/),$(if $($v/$1/$2),\
   $(info $(space/)       |$v : $($v/$1/$2)))))
 $(eval exec_modules/ := $(call bind-join-var/3/,EXEC_MODULES,$1,$2))
-$(eval linkflags/ := $(call bind-join-var/3/,LINKFLAGS,$1,$2))
+$(eval linkflags_pre/ := $(call bind-join-var/3/,LINKFLAGS_PRE,$1,$2))
+$(eval linkflags_post/ := $(call bind-join-var/3/,LINKFLAGS_POST,$1,$2))
 $(eval link/ := $(call bind-join-var/3/,LINK,$1,$2))
 $(eval dest_dir/ := $(BUILD_DIR)$1/)
 $(eval generated_bin/ += $(dest_dir/)$2)
 $(eval $(dest_dir/)$2 : $(exec_modules/:%=$(BUILD_DIR)$1/%.a)\
   | $(dest_dir/)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(echo_LINK/)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(link/) $(linkflags/)\
+  $(echo_LINK/)$(nl/)$(tab/)\
+  $(cmd_SILENT/)$(link/) $(linkflags_pre/) $$^ $(linkflags_post/) $$@\
   )
 $(foreach m,$(exec_modules/),\
   $(call B_MODULE/3/,$t,$e,$m))
@@ -277,13 +305,17 @@ $(if $(print/),$(info $(space/)         Module\
   $(info $(space/)           |$v : $($v/$1/$2/$3)))))
 $(eval c_srcs/ := $(foreach ext,$(C_EXTENSIONS),$(call rwildcard/2/,$3/,*.$(ext))))
 $(eval cxx_srcs/ := $(foreach ext,$(CXX_EXTENSIONS),$(call rwildcard/2/,$3/,*.$(ext))))
+$(eval srcfiles/ += $(c_srcs/) $(cxx_srcs/))
+$(eval incfiles/ +=\
+  $(foreach ext,$(C_INC_EXTENSIONS),$(call rwildcard/2/,$3/,*.$(ext)))\
+  $(foreach ext,$(CXX_INC_EXTENSIONS),$(call rwildcard/2/,$3/,*.$(ext))))
 $(eval ar/ := $(call bind-join-var/4/,AR,$1,$2,$3))
 $(eval arflags/ := $(call bind-join-var/4/,ARFLAGS,$1,$2,$3))
 $(eval dest_dir/ := $(BUILD_DIR)$1/)
 $(eval generated_mod/ += $(dest_dir/)$3.a)
 $(eval $(dest_dir/)$3.a : $(c_srcs/:%=$(BUILD_DIR)$1/%.o)\
   $(cxx_srcs/:%=$(BUILD_DIR)$1/%.o)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(echo_AR/)$(nl/)$(tab/)\
+  $(echo_AR/)$(nl/)$(tab/)\
   $(cmd_SILENT/)$(ar/) $(arflags/) $$@ $$?)
 $(foreach f,$(c_srcs/),\
   $(call B_OBJ_C/4/,$1,$2,$3,$f))
@@ -306,7 +338,7 @@ $(eval inc_dirs/ := $(call bind-join-var/4/,INCLUDE_DIRS,$1,$2,$3))
 $(eval dest_dir/ := $(BUILD_DIR)$1/$(dir $4))
 $(eval generated_obj/ += $(BUILD_DIR)$1/$4.o)
 $(eval $(BUILD_DIR)$1/$4.o : $4 $(BUILD_DIR)$1/$4.d | $(dest_dir/)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(echo_CC/)$(nl/)$(tab/)\
+  $(echo_CC/)$(nl/)$(tab/)\
   $(cmd_SILENT/)$(cc/) $(cflags/) $(cppflags/) $(inc_dirs/) -c -o $$@ $$<$(nl/)\
 )
 $(call B_OBJ_C/XX_GENDEP/4/,$1,$2,$3,$4)
@@ -326,7 +358,7 @@ $(eval inc_dirs/ := $(call bind-join-var/4/,INCLUDE_DIRS,$1,$2,$3))
 $(eval dest_dir/ := $(BUILD_DIR)$1/$(dir $4))
 $(eval generated_obj/ += $(BUILD_DIR)$1/$4.o)
 $(eval $(BUILD_DIR)$1/$4.o : $4 $(BUILD_DIR)$1/$4.d | $(dest_dir/)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(echo_CXX/)$(nl/)$(tab/)\
+  $(echo_CXX/)$(nl/)$(tab/)\
   $(cmd_SILENT/)$(cxx/) $(cxxflags/) $(cppflags/) $(inc_dirs/) -c -o $$@ $$<$(nl/)\
 )
 $(call B_OBJ_C/XX_GENDEP/4/,$1,$2,$3,$4)
@@ -348,6 +380,14 @@ $(eval $(BUILD_DIR)$1/$4.d : $4 | $(dest_dir/)$(nl/)$(tab/)\
   $(echo_GENDEP)$(nl/)$(tab/)\
   $(cmd_SILENT/)$(cpp/) $(cppflags/) $(inc_dirs/) -MM -MF $$@ -MQ $$@ -MQ $$(@:.d=.o) $$<\
   )
+$(eval generated_tidied/ += $(BUILD_DIR)$1/$4.tidied)
+$(if $(tidy/),$(eval\
+  $(nl/)tidy : $(BUILD_DIR)$1/$4.tidied\
+  $(nl/)$(BUILD_DIR)$1/$4.tidied : $4 | $(dest_dir/)$(nl/)$(tab/)\
+  $(echo_TIDY/)$(nl/)$(tab/)\
+  $(cmd_SILENT/)clang-tidy $(call bind-join-var/4/,CLANG-TIDYFLAGS,$1,$2,$3)\
+  $$< -- $(inc_dirs/) && touch $$@ || true$(nl/)\
+  ))
 endef
 
 # init build
@@ -370,8 +410,6 @@ include $(foreach g,$(MAKECMDGOALS),\
 endif
 endif
 
-PHONY += clean purge cleanobj cleanmod cleandep cleanbin
-
 cleandep:
 	$(foreach d,$(generated_dep/),$(RM) $d$(nl/)$(tab/))
 
@@ -385,6 +423,16 @@ cleanbin:
 	$(foreach m,$(generated_bin/),$(RM) $m$(nl/)$(tab/))
 
 clean: cleandep cleanobj cleanmod cleanbin
+
+format:
+	$(echo_FRMT/)
+	$(cmd_SILENT/)clang-format -verbose -style=file -i $(sort $(srcfiles/)\
+  $(incfiles/))
+
+style : format
+	$(echo_STYLE/)
+	$(cmd_SILENT/)astyle --project=.astylerc --suffix=none $(sort $(srcfiles/)\
+  $(incfiles/))
 
 # Did you just assume my OS
 purge:
