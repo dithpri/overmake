@@ -62,7 +62,7 @@ EXEC_MODULES/release/a := mod1 debug
 # Default: $(EXECS)
 
 # EXEC_MODULES/t/e
-# Modules m needed to build exec e for target t
+# Modules needed to build exec e for target t
 # Default: $(MODULES)
 
 # INCLUDE_DIRS/t/e/m
