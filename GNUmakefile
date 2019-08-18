@@ -3,9 +3,9 @@ include config.mk
 MAKEFLAGS += -r
 
 
-VARS_BASE/ := BUILD_DIR EXECS MODULES TARGETS TARGET_EXECS EXEC_MODULES\
-INCLUDE_DIRS CC CXX CPP CFLAGS CXXFLAGS CPPFLAGS LINK CLANG-TIDYFLAGS\
-LINKFLAGS_PRE LINKFLAGS_POST AR ARFLAGS\
+VARS_BASE/ := BUILD_DIR EXECS MODULES TARGETS INCLUDE_DIRS TARGET_EXECS\
+EXEC_MODULES INCLUDE_DIRS CC CXX CPP CFLAGS CXXFLAGS CPPFLAGS LINK\
+CLANG-TIDYFLAGS LINKFLAGS_PRE LINKFLAGS_POST AR ARFLAGS\
 C_EXTENSIONS C_INC_EXTENSIONS CXX_EXTENSIONS CXX_INC_EXTENSIONS\
 OM_NOCHECK OM_NOECHO OM_COLORS OM_DETAILED_PRINT 
 
@@ -19,7 +19,8 @@ $(if $(strip $(foreach n,$1,\
 
 PHONY := $(PHONY)
 PHONY += all showconf print
-PHONY += clean purge cleanobj cleanmod cleandep cleanbin
+phony_clean/ := clean purge cleanobj cleanmod cleandep cleanbin cleantidy
+PHONY += $(phony_clean/)
 
 ifeq ($(findstring showconf,$(MAKECMDGOALS)),showconf)
 print/ := Y
@@ -27,7 +28,8 @@ $(foreach v,$(VARS_BASE/),$(info |$v : $($v)))
 $(info )
 all: showconf
 else
-ifeq ($(call contains-any/2/,clean purge cleanobj cleanmod cleandep cleanbin,$(MAKECMDGOALS)),Y)
+ifeq ($(call contains-any/2/,$(phony_clean/),$(MAKECMDGOALS)),Y)
+cleangoal/ := Y
 all:
 else
 print/ :=
@@ -37,7 +39,9 @@ endif
 
 PHONY += tidy format style
 
+any_target_set/ :=$(call contains-any/2/,$(TARGETS),$(MAKECMDGOALS))
 ifeq ($(call contains-any/2/,tidy,$(MAKECMDGOALS)),Y)
+tidy: $(foreach t,$(TARGETS),$(if $(call contains-any/2/,$t,$(MAKECMDGOALS)),tidy/$t/,$(if $(any_target_set/),,tidy/$t/)))
 tidy/ := Y
 endif
 ifeq ($(call contains-any/2/,format,$(MAKECMDGOALS)),Y)
@@ -47,7 +51,6 @@ ifeq ($(call contains-any/2/,style,$(MAKECMDGOALS)),Y)
 style/ := Y
 endif
 
-include $(INC_DEPS)
 
 # const
 F/ :=
@@ -264,10 +267,25 @@ $(if $(print/),$(info * Target '$(print/tcol/)$1$(print/rcol/)')\
   $(info $(space/)   |$v : $($v/$1)))))
 $(eval target_execs/ := $(call bind-join-var/2/,TARGET_EXECS,$1))
 $(eval PHONY += $1)
-$(eval $1 : $(target_execs/:%=$(BUILD_DIR)$1/%) | $(BUILD_DIR)$1/)
-$(eval $(BUILD_DIR)$1/ : ;mkdir -p $$@)
-$(foreach e,$(target_execs/),\
-  $(call B_EXEC/2/,$1,$e))
+
+$(eval genrules/:=)
+$(eval continue/:=Y)
+$(eval me_set/:=$(call contains-any/2/,$1,$(MAKECMDGOALS)))
+$(eval only_me_set/:=$(call string-strip-eq/2/,$1,$(MAKECMDGOALS)))
+$(if $(any_target_set/),\
+  $(if $(me_set/),\
+    $(if $(cleangoal/),\
+      ,\
+      $(if $(only_me_set/),$(eval genrules/:=Y))),\
+    $(eval continue/:=$(tidy/))),\
+  $(eval genrules/:=Y))
+
+$(if $(genrules/),\
+  $(eval $1 : $(target_execs/:%=$(BUILD_DIR)$1/%) | $(BUILD_DIR)$1/)\
+  $(eval $(BUILD_DIR)$1/ : ;mkdir -p $$@))
+$(if $(continue/),\
+  $(foreach e,$(target_execs/),\
+    $(call B_EXEC/2/,$1,$e)))
 $(if $(print/),$(info ))
 endef
 
@@ -288,7 +306,7 @@ $(eval generated_bin/ += $(dest_dir/)$2)
 $(eval $(dest_dir/)$2 : $(exec_modules/:%=$(BUILD_DIR)$1/%.a)\
   | $(dest_dir/)$(nl/)$(tab/)\
   $(echo_LINK/)$(nl/)$(tab/)\
-  $(cmd_SILENT/)$(link/) $(linkflags_pre/) $$^ $(linkflags_post/) $$@\
+  $(cmd_SILENT/)$(link/) $(linkflags_pre/) $$^ $(linkflags_post/) -o $$@\
   )
 $(foreach m,$(exec_modules/),\
   $(call B_MODULE/3/,$t,$e,$m))
@@ -350,7 +368,8 @@ endef
 # 3: module
 # 4: file
 define B_OBJ_CXX/4/ =
-$(if $(print/),$(info $(space/)             OBJ '$(BUILD_DIR)$1/$4.o'))
+$(if $(print/),$(info $(space/)             OBJ\
+'$(print/ocol/)$(BUILD_DIR)$1/$4.o$(print/rcol/)'))
 $(eval cxx/ := $(call bind-join-var/4/,CXX,$1,$2,$3))
 $(eval cppflags/ := $(call bind-join-var/4/,CPPFLAGS,$1,$2,$3))
 $(eval cxxflags/ := $(call bind-join-var/4/,CXXFLAGS,$1,$2,$3))
@@ -381,8 +400,8 @@ $(eval $(BUILD_DIR)$1/$4.d : $4 | $(dest_dir/)$(nl/)$(tab/)\
   $(cmd_SILENT/)$(cpp/) $(cppflags/) $(inc_dirs/) -MM -MF $$@ -MQ $$@ -MQ $$(@:.d=.o) $$<\
   )
 $(eval generated_tidied/ += $(BUILD_DIR)$1/$4.tidied)
-$(if $(tidy/),$(eval\
-  $(nl/)tidy : $(BUILD_DIR)$1/$4.tidied\
+$(if $(tidy/),$(eval PHONY += tidy/$1/)$(eval\
+  $(nl/)tidy/$1/ : $(BUILD_DIR)$1/$4.tidied\
   $(nl/)$(BUILD_DIR)$1/$4.tidied : $4 | $(dest_dir/)$(nl/)$(tab/)\
   $(echo_TIDY/)$(nl/)$(tab/)\
   $(cmd_SILENT/)clang-tidy $(call bind-join-var/4/,CLANG-TIDYFLAGS,$1,$2,$3)\
@@ -400,7 +419,7 @@ $(BUILD_DIR)%/ : ; @mkdir -p $@
 ifeq ($(MAKECMDGOALS),)
 include $(foreach t,$(TARGETS),$(INC_DEPS/$t/))
 else
-ifneq ($(call contains-any/2/,clean purge cleanobj cleanmod cleandep cleanbin,$(MAKECMDGOALS)),Y)
+ifneq ($(call contains-any/2/,$(phony_clean/),$(MAKECMDGOALS)),Y)
 # Shitty heuristic but it works
 include $(foreach g,$(MAKECMDGOALS),\
   $(INC_DEPS/$(strip $(foreach t,$(TARGETS),\
@@ -409,6 +428,7 @@ include $(foreach g,$(MAKECMDGOALS),\
       $t)))/))
 endif
 endif
+
 
 cleandep:
 	$(foreach d,$(generated_dep/),$(RM) $d$(nl/)$(tab/))
@@ -422,7 +442,10 @@ cleanmod:
 cleanbin:
 	$(foreach m,$(generated_bin/),$(RM) $m$(nl/)$(tab/))
 
-clean: cleandep cleanobj cleanmod cleanbin
+cleantidy:
+	$(foreach m,$(generated_tidied/),$(RM) $m$(nl/)$(tab/))
+
+clean: cleandep cleanobj cleanmod cleanbin cleantidy
 
 format:
 	$(echo_FRMT/)

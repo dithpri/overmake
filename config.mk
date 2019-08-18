@@ -6,26 +6,6 @@ EXECS := a b
 MODULES := mod1 mod2 debug cxx_mod
 # Targets
 # Warning: reserved phony targets:
-# showconf all clean purge cleanobj cleanmod cleandep cleanbin
-TARGETS := tdebug release
-# Additional include dirs
-INCLUDE_DIRS := -I./
-
-# see next section
-TARGET_EXECS := a b
-TARGET_EXECS/tdebug := a
-EXEC_MODULES//a := mod1
-EXEC_MODULES//b := mod2 cxx_mod
-EXEC_MODULES/release/a := mod1 debug
-
-# Directory to build in
-BUILD_DIR := build/
-# Binaries
-EXECS := a b
-# Available modules (subdirs in the root dir)
-MODULES := mod1 mod2 debug cxx_mod
-# Targets
-# Warning: reserved phony targets:
 #  all showconf print clean purge cleanobj cleanmod cleandep cleanbin tidy
 #  format style
 TARGETS := tdebug release
@@ -129,9 +109,9 @@ EXEC_MODULES/release/a := mod1 debug
 # Additional
 
 # C_EXTENSIONS
-# Default: := c
+# Default: c
 # C_INC_EXTENSIONS
-# Default: := h
+# Default: h
 
 # CXX_EXTENSIONS
 # Default: cpp
